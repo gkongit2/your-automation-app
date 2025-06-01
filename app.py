@@ -10,6 +10,7 @@ import threading
 import time
 import queue # Import queue for inter-thread communication
 import logging # Import logging
+import base64
 
 app = Flask(__name__)
 

@@ -167,6 +167,7 @@
             captchaImage.src = "/captcha?" + new Date().getTime(); // Cache-buster
             captchaSection.style.display = "block";
             captchaInput.value = ""; // Clear previous input
+            captchaInput.focus(); // <--- ADDED: Auto-focus CAPTCHA input
             submitCaptchaBtn.disabled = false;
             startAutomationBtn.disabled = true; // Keep start button disabled
             console.log("CAPTCHA ready for input. Displaying image.");
@@ -215,6 +216,7 @@
         statusDiv.classList.remove("error");
         progressBar.style.width = "0%";
         progressBar.innerText = "0%";
+        progressBar.style.backgroundColor = "#04aa6d"; // Reset to success color
 
         const response = await fetch("/initiate-automation", {
           method: "POST",
@@ -270,6 +272,6 @@
       // Initial status update
       updateStatus();
     </script>
-    <footer>Made with ❤ by gk</footer>
   </body>
+  <footer>Made with ❤ by gk</footer>
 </html>
