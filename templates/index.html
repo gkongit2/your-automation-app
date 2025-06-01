@@ -143,6 +143,7 @@
         submitCaptchaBtn.disabled = true;
         captchaSection.style.display = "none";
         captchaInput.value = "";
+        captchaInput.disabled = false; // <--- ADDED: Re-enable captcha input
         isCaptchaWaiting = false;
 
         statusDiv.innerText = "Status: Idle";
