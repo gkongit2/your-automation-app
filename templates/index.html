@@ -82,6 +82,20 @@
       <div>
         <input type="password" id="password" placeholder="Password" required />
       </div>
+
+      <button id="loadCaptchaBtn">Load CAPTCHA</button>
+
+      <div id="captchaSection" style="display: none">
+        <p>Please enter the CAPTCHA:</p>
+        <img id="captchaImage" src="/captcha" alt="CAPTCHA" />
+        <input
+          type="text"
+          id="captchaText"
+          placeholder="Enter CAPTCHA"
+          required
+        />
+      </div>
+
       <button id="startAutomationBtn">Start Feedback Automation</button>
       <div id="statusMessage">Status: Idle</div>
       <div class="progress-bar-container">
@@ -94,86 +108,120 @@
     </div>
 
     <script>
-      const startBtn = document.getElementById("startAutomationBtn");
-      const usernameInput = document.getElementById("username");
-      const passwordInput = document.getElementById("password");
-      const statusDiv = document.getElementById("statusMessage");
-      const progressBar = document.getElementById("progressBar");
-      let statusInterval;
+    const startBtn = document.getElementById("startAutomationBtn");
+    const usernameInput = document.getElementById("username");
+    const passwordInput = document.getElementById("password");
+    const statusDiv = document.getElementById("statusMessage");
+    const progressBar = document.getElementById("progressBar");
 
-      async function updateStatus() {
+    const captchaSection = document.getElementById("captchaSection");
+    const captchaImage = document.getElementById("captchaImage");
+    const loadCaptchaBtn = document.getElementById("loadCaptchaBtn");
+    const captchaInput = document.getElementById("captchaText");
+
+    let statusInterval;
+
+    async function updateStatus() {
         try {
-          const response = await fetch("/status");
-          const data = await response.json();
-          statusDiv.innerText = "Status: " + data.message;
-          if (data.status === "error") {
-            statusDiv.classList.add("error");
-            clearInterval(statusInterval);
-          } else {
-            statusDiv.classList.remove("error");
-          }
+        const response = await fetch("/status");
+        const data = await response.json();
+        statusDiv.innerText = "Status: " + data.message;
 
-          let progress = data.progress;
-          if (progress === -1) {
+        if (data.progress === -1) {
+            statusDiv.classList.add("error");
             progressBar.style.width = "100%";
             progressBar.style.backgroundColor = "#dc3545";
             progressBar.innerText = "Error!";
             clearInterval(statusInterval);
             startBtn.disabled = false;
-          } else {
-            progressBar.style.width = progress + "%";
-            progressBar.style.backgroundColor = "#04AA6D";
-            progressBar.innerText = progress + "%";
-            if (progress === 100) {
-              clearInterval(statusInterval);
-              startBtn.disabled = false;
-            }
-          }
-        } catch (error) {
-          statusDiv.innerText = "Error fetching status: " + error.message;
-          statusDiv.classList.add("error");
-          clearInterval(statusInterval);
-          startBtn.disabled = false;
-          console.error("Error fetching status:", error);
+            return;
         }
-      }
 
-      startBtn.addEventListener("click", async function () {
-        const username = usernameInput.value;
-        const password = passwordInput.value;
+        statusDiv.classList.remove("error");
+        progressBar.style.width = data.progress + "%";
+        progressBar.innerText = data.progress + "%";
+
+        if (data.progress === 100) {
+            clearInterval(statusInterval);
+            startBtn.disabled = false;
+        }
+        } catch (err) {
+        statusDiv.innerText = "Error fetching status: " + err.message;
+        statusDiv.classList.add("error");
+        clearInterval(statusInterval);
+        startBtn.disabled = false;
+        }
+    }
+
+    loadCaptchaBtn.addEventListener("click", async () => {
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
 
         if (!username || !password) {
-          statusDiv.innerText = "Please enter both username and password.";
-          statusDiv.classList.add("error");
-          return;
+        statusDiv.innerText = "Please enter username and password first.";
+        statusDiv.classList.add("error");
+        return;
+        }
+
+        loadCaptchaBtn.disabled = true;
+        statusDiv.innerText = "Preparing CAPTCHA...";
+        statusDiv.classList.remove("error");
+
+        const response = await fetch("/prepare-captcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+        if (data.status === "preparing") {
+        setTimeout(() => {
+            captchaImage.src = "/captcha?" + new Date().getTime(); // Cache-buster
+            captchaSection.style.display = "block";
+            statusDiv.innerText = "CAPTCHA loaded. Enter the text to continue.";
+            loadCaptchaBtn.disabled = false;
+        }, 3000); // allow enough time for captcha to render
+        } else {
+        statusDiv.innerText = "Failed to prepare CAPTCHA.";
+        statusDiv.classList.add("error");
+        loadCaptchaBtn.disabled = false;
+        }
+    });
+
+    startBtn.addEventListener("click", async () => {
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+        const captcha = captchaInput.value.trim();
+
+        if (!username || !password || !captcha) {
+        statusDiv.innerText = "All fields including CAPTCHA are required.";
+        statusDiv.classList.add("error");
+        return;
         }
 
         startBtn.disabled = true;
-        statusDiv.innerText = "Starting automation... Please wait.";
+        statusDiv.innerText = "Starting automation...";
         statusDiv.classList.remove("error");
+
+        const response = await fetch("/start-automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, captcha }),
+        });
+
+        const data = await response.json();
+        if (data.status === "initiated") {
+        statusDiv.innerText = "Automation started. Please wait...";
         progressBar.style.width = "0%";
         progressBar.innerText = "0%";
-
-        try {
-          const response = await fetch("/start-automation", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ username: username, password: password }), // Send credentials
-          });
-          const data = await response.json();
-          statusDiv.innerText = "Automation initiated: " + data.message;
-          statusInterval = setInterval(updateStatus, 3000);
-        } catch (error) {
-          statusDiv.innerText = "Error initiating automation: " + error.message;
-          statusDiv.classList.add("error");
-          startBtn.disabled = false;
-          console.error("Error initiating automation:", error);
+        statusInterval = setInterval(updateStatus, 3000);
+        } else {
+        statusDiv.innerText = "Error: " + data.message;
+        statusDiv.classList.add("error");
+        startBtn.disabled = false;
         }
-      });
-
-      updateStatus(); // Initial status update
+    });
     </script>
+
   </body>
 </html>

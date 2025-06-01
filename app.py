@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,7 +15,7 @@ automation_status = {"message": "Idle", "progress": 0}
 
 # Function to run the Selenium automation
 # Now accepts username and password as arguments
-def run_feedback_automation_task(username, password):
+def run_feedback_automation_task(username, password, captcha):
     global automation_status
     automation_status = {"message": "Starting automation...", "progress": 5}
 
@@ -34,15 +34,23 @@ def run_feedback_automation_task(username, password):
 
         # --- Automated Login Steps ---
         # Replace 'username_id', 'password_id', 'login_button_id' with actual IDs from the website
-        username_field = wait.until(EC.presence_of_element_located((By.ID, "txtUserName")))
+        username_field = wait.until(EC.presence_of_element_located((By.ID, "TXTUSN")))
         username_field.send_keys(username)
         print("Entered username.")
 
-        password_field = wait.until(EC.presence_of_element_located((By.ID, "txtPassword")))
+        password_field = wait.until(EC.presence_of_element_located((By.ID, "TXTPASSWORD")))
         password_field.send_keys(password)
         print("Entered password.")
+        
+        wait.until(EC.element_to_be_clickable((By.ID, "BTN_GetCaptcha0"))).click()
+        time.sleep(2)
+        captcha_element = wait.until(EC.presence_of_element_located((By.ID, "Image2")))
+        captcha_element.screenshot("static/captcha.png")
+        
+        captcha_field = wait.until(EC.presence_of_element_located((By.ID, "txtVerificationCode")))
+        captcha_field.send_keys(captcha)
 
-        login_button = wait.until(EC.element_to_be_clickable((By.ID, "btnLogin")))
+        login_button = wait.until(EC.element_to_be_clickable((By.ID, "btn_Login")))
         login_button.click()
         print("Clicked login button.")
 
@@ -128,11 +136,12 @@ def start_automation():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
+    captcha = data.get('captcha')
 
     if not username or not password:
         return jsonify({"status": "error", "message": "Username and password are required."}), 400
 
-    threading.Thread(target=run_feedback_automation_task, args=(username, password)).start()
+    threading.Thread(target=run_feedback_automation_task, args=(username, password, captcha)).start()
     return jsonify({"status": "initiated", "message": "Automation started in background."})
 
 @app.route('/status', methods=['GET'])
@@ -142,6 +151,42 @@ def get_status():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/captcha')
+def serve_captcha():
+    return send_file("static/captcha.png", mimetype='image/png')
+
+@app.route('/prepare-captcha', methods=['POST'])
+def prepare_captcha():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"status": "error", "message": "Username and password are required."}), 400
+
+    def capture_captcha():
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(options=chrome_options)
+        wait = WebDriverWait(driver, 60)
+        try:
+            driver.get("https://bitwebserver.bittechlearn.online:8084/Students/SubjectTeacher.aspx")
+            wait.until(EC.presence_of_element_located((By.ID, "TXTUSN"))).send_keys(username)
+            wait.until(EC.presence_of_element_located((By.ID, "TXTPASSWORD"))).send_keys(password)
+            wait.until(EC.element_to_be_clickable((By.ID, "BTN_GetCaptcha0"))).click()
+            time.sleep(2)
+            captcha_element = wait.until(EC.presence_of_element_located((By.ID, "Image2")))
+            captcha_element.screenshot("static/captcha.png")
+        except Exception as e:
+            print(f"CAPTCHA capture error: {e}")
+        finally:
+            driver.quit()
+
+    threading.Thread(target=capture_captcha).start()
+    return jsonify({"status": "preparing", "message": "CAPTCHA is being prepared, please wait a moment."})
 
 if __name__ == '__main__':
     app.run()
