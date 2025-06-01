@@ -136,6 +136,23 @@
       let statusInterval;
       let isCaptchaWaiting = false; // To track if we are waiting for CAPTCHA input
 
+      // Function to reset all UI elements
+      function resetUI() {
+        clearInterval(statusInterval); // Stop any active polling
+        startAutomationBtn.disabled = false;
+        submitCaptchaBtn.disabled = true;
+        captchaSection.style.display = "none";
+        captchaInput.value = "";
+        isCaptchaWaiting = false;
+
+        statusDiv.innerText = "Status: Idle";
+        statusDiv.classList.remove("error");
+        progressBar.style.width = "0%";
+        progressBar.innerText = "0%";
+        progressBar.style.backgroundColor = "#04aa6d"; // Reset to default success color
+        captchaImage.src = "/captcha"; // Reset to default transparent GIF or blank
+      }
+
       async function updateStatus() {
         try {
           const response = await fetch("/status");
@@ -162,12 +179,12 @@
 
           // Handle CAPTCHA waiting state
           if (data.captcha_ready && !isCaptchaWaiting) {
-            // Only update if we're not already waiting for CAPTCHA
             isCaptchaWaiting = true;
-            captchaImage.src = "/captcha?" + new Date().getTime(); // Cache-buster
+            // Add a timestamp to the URL to force the browser to fetch a new image
+            captchaImage.src = "/captcha?" + new Date().getTime();
             captchaSection.style.display = "block";
             captchaInput.value = ""; // Clear previous input
-            captchaInput.focus(); // <--- ADDED: Auto-focus CAPTCHA input
+            captchaInput.focus(); // Auto-focus CAPTCHA input
             submitCaptchaBtn.disabled = false;
             startAutomationBtn.disabled = true; // Keep start button disabled
             console.log("CAPTCHA ready for input. Displaying image.");
@@ -186,6 +203,9 @@
             submitCaptchaBtn.disabled = true;
             captchaSection.style.display = "none";
             isCaptchaWaiting = false;
+            // Optionally, you could call resetUI here if you want a complete reset
+            // as soon as it reaches 100%, but keeping the "Automation complete!" message
+            // might be desired for a brief period.
           }
         } catch (err) {
           statusDiv.innerText = "Error fetching status: " + err.message;
@@ -199,24 +219,21 @@
       }
 
       startAutomationBtn.addEventListener("click", async () => {
+        // --- Call resetUI here for a clean start ---
+        resetUI();
+
         const username = usernameInput.value.trim();
         const password = passwordInput.value.trim();
 
         if (!username || !password) {
           statusDiv.innerText = "Username and password are required.";
           statusDiv.classList.add("error");
+          startAutomationBtn.disabled = false; // Re-enable if validation fails
           return;
         }
 
-        startAutomationBtn.disabled = true;
-        submitCaptchaBtn.disabled = true; // Disable submit button initially
-        captchaSection.style.display = "none"; // Hide captcha section
-        isCaptchaWaiting = false; // Reset flag
+        startAutomationBtn.disabled = true; // Disable while initiation is in progress
         statusDiv.innerText = "Initiating automation, launching browser...";
-        statusDiv.classList.remove("error");
-        progressBar.style.width = "0%";
-        progressBar.innerText = "0%";
-        progressBar.style.backgroundColor = "#04aa6d"; // Reset to success color
 
         const response = await fetch("/initiate-automation", {
           method: "POST",
@@ -226,12 +243,12 @@
 
         const data = await response.json();
         if (data.status === "initiated") {
-          statusDiv.innerText = data.message; // "Automation started. Waiting for CAPTCHA input."
-          statusInterval = setInterval(updateStatus, 2000); // Poll status more frequently during CAPTCHA wait
+          statusDiv.innerText = data.message;
+          statusInterval = setInterval(updateStatus, 2000);
         } else {
           statusDiv.innerText = "Error: " + data.message;
           statusDiv.classList.add("error");
-          startAutomationBtn.disabled = false;
+          startAutomationBtn.disabled = false; // Re-enable on API error
         }
       });
 
@@ -269,8 +286,11 @@
         }
       });
 
-      // Initial status update
-      updateStatus();
+      // Initial setup on page load
+      window.onload = () => {
+        resetUI(); // Ensure UI is clean on first load
+        updateStatus(); // Fetch initial status from server
+      };
     </script>
   </body>
   <footer>Made with ❤ by gk</footer>
